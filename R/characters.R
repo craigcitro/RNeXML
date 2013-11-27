@@ -4,30 +4,38 @@
 #' Extract the character matrix
 #'
 #' @param nexml nexml object (e.g. from read.nexml)
+#' @param data_type Data type to get. If default (NULL), all data retrieved.
 #' @export
-get_characters_list <- function(nexml){
+get_characters_list <- function(nexml, data_type=NULL){
 # extract mapping between otus and taxon ids 
   maps <- get_otu_maps(nexml)
 # loop over all character matrices 
   out <- lapply(nexml@characters, function(characters){
-    # extract data.frame from the S4 structure 
-    dat <- extract_character_matrix(characters@matrix)
-    # Convert states to symbols
-    dat <- state_to_symbol(dat, characters@format)
-    # Replace OTU ids with Taxon labels  
-    dat <- otu_to_label(dat, maps[[characters@otus]])
-    # Replace character id with state label?  
-    dat <- character_to_label(dat, characters@format)
-
-    # Make numeric data class numeric, discrete data class discrete
-    type <- slot(characters, 'xsi:type') # check without namespace too?
-    if(type == "nex:ContinuousCells")
-      for(i in length(dat))                 ## FIXME this could be faster/more elegant, no?
-        dat[[i]] <- as.numeric(dat[[i]])
-    else 
-      for(i in length(dat))
-        dat[[i]] <- factor(dat[[i]])
-    dat
+    # check data type
+    dattype <- slot(characters, 'xsi:type')
+    
+    if(dattype == "nex:ContinuousCells"){
+      # extract data.frame from the S4 structure 
+      dat <- extract_character_matrix(characters@matrix)
+      # Convert states to symbols
+      dat <- state_to_symbol(dat, characters@format)
+      # Replace OTU ids with Taxon labels  
+      dat <- otu_to_label(dat, maps[[characters@otus]])
+      # Replace character id with state label?  
+      dat <- character_to_label(dat, characters@format)
+      
+      # Make numeric data class numeric, discrete data class discrete
+      type <- slot(characters, 'xsi:type') # check without namespace too?
+      if(type == "nex:ContinuousCells")
+        for(i in length(dat))                 ## FIXME this could be faster/more elegant, no?
+          dat[[i]] <- as.numeric(dat[[i]])
+      else 
+        for(i in length(dat))
+          dat[[i]] <- factor(dat[[i]])
+      dat
+    } else if(dattype == 'nex:StandardSeqs'){
+      dat <- extract_character_matrix_standardseqs(characters@matrix)
+    }
   })
   # name the character matrices by their ids  
   id <- sapply(nexml@characters, function(characters) characters@id)
@@ -53,7 +61,9 @@ get_characters_list <- function(nexml){
 #' Get character data.frame, accepts either nexml object, or a list of data.frames
 #' 
 #' @param input A nexml object (e.g., as output from \code{\link{read.nexml}}), or 
-#'    a list of data.frame's (e.g., as output from \code{\link{get_characters_list}})
+#' a list of data.frame's (e.g., as output from \code{\link{get_characters_list}})
+#' @param suffixes Add list element names as suffixes to output data.frame column 
+#' names. 
 #' @export
 #' @examples \dontrun{
 #' # library(RNeXML)
@@ -65,8 +75,13 @@ get_characters_list <- function(nexml){
 #' char_list <- get_characters_list(nex)
 #' row.names(char_list[[1]])[1:3] <- c("taxon_18","taxon_20","taxon_30")
 #' get_characters(char_list)
+#' 
+f <- system.file("examples", "characters.xml", package="RNeXML")
+nex <- read.nexml(f)
+get_characters(nex)
 #' } 
 get_characters <- function(input, suffixes=FALSE){
+  
   if(inherits(input, "nexml")){
     list_chars <- get_characters_list(input)
   } else { list_chars <- input }
@@ -191,6 +206,16 @@ extract_character_matrix <- function(matrix){
 ## Map state value to symbol for discrete traits?  
 
 
+characters=nexml@characters[[7]]
+matrix=characters@matrix
+matrix@row[[1]]
+matrix@row[[1]]@cell
+extract_character_matrix_standardseqs(matrix)
 
-
-
+extract_character_matrix_standardseqs <- function(matrix){ 
+  mat <- lapply(matrix@row, function(row) c(row@id, sapply(row@seq, function(x) x@seq)))
+  mat <- lapply(mat, function(x){ names(x) <- c("character", "state"); x })
+  otu <- sapply(matrix@row, function(row) row@otu)
+  names(mat) <- otu
+  mat 
+}
